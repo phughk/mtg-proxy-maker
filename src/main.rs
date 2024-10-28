@@ -1,29 +1,13 @@
-use std::fmt::{Debug, Display, Formatter};
+pub mod deck;
+mod image_repository;
+
+use crate::deck::Card;
 use reqwest::blocking::Client;
+use reqwest::header::{ACCEPT, USER_AGENT};
 use reqwest::StatusCode;
-use serde::Deserialize;
+use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
 use std::io::{self, BufRead};
-use std::path::Path;
-use reqwest::header::{ACCEPT, USER_AGENT};
-
-#[derive(Debug)]
-struct Card {
-    quantity: u32,
-    set_code: String,
-    collector_number: String,
-    name: String,
-}
-
-#[derive(Deserialize)]
-struct ScryfallCard {
-    image_uris: Option<ImageUris>,
-}
-
-#[derive(Deserialize)]
-struct ImageUris {
-    normal: String,
-}
 
 fn parse_dck_line(line: &str) -> Option<Card> {
     let parts: Vec<&str> = line.split_whitespace().collect();
@@ -73,7 +57,7 @@ fn fetch_card_image(client: &Client, card: &Card) -> Result<(), Box<dyn std::err
         StatusCode::NOT_FOUND => {
             println!("Card not found in Scryfall: {}", card.name);
             println!("Request was: {}", url);
-            return Err(Box::new(BlaError::Generic("not found".to_string())))
+            return Err(Box::new(BlaError::Generic("not found".to_string())));
         }
         _ => {
             println!("Error fetching {}: {}", card.name, resp.status());
@@ -99,10 +83,9 @@ impl Display for BlaError {
     }
 }
 
-impl std::error::Error for BlaError { }
+impl std::error::Error for BlaError {}
 
 fn process_dck_file(file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let client = Client::new();
     let file = File::open(file_path)?;
     let reader = io::BufReader::new(file);
 
