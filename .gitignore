@@ -24,4 +24,8 @@ Cargo.lock
 
 /target
 .idea
+*.dck
+*.dek
+*.mtga
+data_repository/
 
