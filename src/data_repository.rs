@@ -17,6 +17,10 @@ impl DataRepository {
         Ok(DataRepository { db, client })
     }
 
+    pub fn delete(&self, card: &str) {
+        self.db.remove(card.clone()).expect("Failed to remove card");
+    }
+
     pub fn get(&self, card: DehydratedCard) -> Result<HydratedCard, ()> {
         let res = self.db.get(card.name.clone()).map_err(|e| ())?;
         let card_info: Option<CardInfo> = res.map(|ivec| ivec.into());
@@ -33,10 +37,22 @@ impl DataRepository {
                         panic!()
                     }
                 };
-                let first = vars.first().clone().expect("The search results did not have a first card").clone();
+                println!("Card variants: {:?}", vars);
+                let first = vars
+                    .first()
+                    .clone()
+                    .expect("The search results did not have a first card")
+                    .clone();
+                let double_sided = first
+                    .card_faces
+                    .iter()
+                    .flat_map(|card_faces_vec| card_faces_vec.iter())
+                    .map(|card_face| card_face.image_uris.is_some())
+                    .reduce(|a, b| a | b)
+                    .unwrap_or(false);
                 let entry = CardInfo {
                     name: first.name,
-                    double_sided: first.card_faces.is_some(),
+                    double_sided,
                     variants: vars
                         .into_iter()
                         .filter(|var| var.valid())
@@ -57,21 +73,29 @@ impl DataRepository {
                 card_info
             }
         };
-        let first_item = card_info.variants.first().expect("There were no variants").clone();
+        let first_item = card_info
+            .variants
+            .first()
+            .expect("There were no variants")
+            .clone();
         Ok(HydratedCard {
             quantity: card.quantity,
-            set_code: card.set_code.unwrap_or(first_item.set.clone()),
+            set_code: card
+                .set_code
+                .unwrap_or(first_item.set.clone())
+                .to_lowercase(),
             collector_number: card
                 .collector_number
-                .unwrap_or(first_item.collector_number.clone()),
+                .unwrap_or(first_item.collector_number.clone())
+                .to_lowercase(),
             name: card_info.name,
-            double_sided: false,
+            double_sided: card_info.double_sided,
             variants: card_info
                 .variants
                 .into_iter()
                 .map(|cv| deck::CardVariant {
-                    set: cv.set,
-                    collector_number: cv.collector_number,
+                    set: cv.set.to_lowercase(),
+                    collector_number: cv.collector_number.to_lowercase(),
                 })
                 .collect(),
         })
@@ -94,7 +118,8 @@ struct CardVariant {
 
 impl From<IVec> for CardInfo {
     fn from(value: IVec) -> Self {
-        let card_info: CardInfo = bincode::deserialize(value.as_ref()).expect("IVec of CardInfo can't be deserialized");
+        let card_info: CardInfo =
+            bincode::deserialize(value.as_ref()).expect("IVec of CardInfo can't be deserialized");
         card_info
     }
 }

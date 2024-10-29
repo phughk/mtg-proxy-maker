@@ -4,6 +4,9 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::io::Read;
 
+const PROXY_MAKER_AGENT: &str = "MyMTGApp/1.0";
+const BASE_URL: &str = "https://api.scryfall.com";
+
 #[derive(Clone)]
 pub struct ScryfallClient {
     client: Client,
@@ -16,34 +19,42 @@ impl ScryfallClient {
         }
     }
 
-    pub fn get_image(&self, set: &str, collector_number: &str) -> Response {
+    pub fn get_image(&self, set: &str, collector_number: &str, back: bool) -> Response {
+        let back_str = match back {
+            true => "&face=back",
+            false => "",
+        };
         let url = format!(
-            "https://api.scryfall.com/cards/{}/{}?format=image",
-            set, collector_number
+            "{BASE_URL}/cards/{}/{}?format=image{}",
+            set, collector_number, back_str
         );
+        println!("url: {}", url);
         let resp = self
             .client
             .get(&url)
-            .header(USER_AGENT, "MyMTGApp/1.0") // Customize as needed
-            .header(ACCEPT, "application/json")
+            .header(USER_AGENT, PROXY_MAKER_AGENT) // Customize as needed
+            .header(ACCEPT, "*/*")
             .send()
             .expect("Expected get image scryfall response to work");
         resp
     }
 
-    pub fn get_card_variants(&self, name: &str) -> Result<Vec<ScryfallSearchResultEntry>, SearchCardError> {
+    pub fn get_card_variants(
+        &self,
+        name: &str,
+    ) -> Result<Vec<ScryfallSearchResultEntry>, SearchCardError> {
         let mut results = vec![];
         let mut has_more = true;
         let mut page = 1;
         while has_more {
             let url = format!(
-                "https://api.scryfall.com/cards/search?q=\"{}\"&page={}&unique=prints",
+                "{BASE_URL}/cards/search?q=\"{}\"&page={}&unique=prints",
                 name, page
             );
             let mut resp = self
                 .client
                 .get(&url)
-                .header(USER_AGENT, "MyMTGApp/1.0")
+                .header(USER_AGENT, PROXY_MAKER_AGENT)
                 .header(ACCEPT, "application/json")
                 .send()
                 .expect("Expected search result to work");
@@ -83,7 +94,7 @@ pub struct ScryfallSearchResult {
     pub data: Vec<ScryfallSearchResultEntry>,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct ScryfallSearchResultEntry {
     pub name: String,
     pub lang: String,
@@ -109,7 +120,7 @@ impl ScryfallSearchResultEntry {
     }
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct ScryfallSearchResultEntryImageUris {
     pub small: String,
     pub normal: String,
@@ -117,11 +128,10 @@ pub struct ScryfallSearchResultEntryImageUris {
     pub png: String,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct ScryfallSearchResultEntryCardFace {
     pub name: String,
     pub image_uris: Option<ScryfallSearchResultEntryImageUris>,
-
 }
 
 #[cfg(test)]

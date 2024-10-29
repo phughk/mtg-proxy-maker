@@ -28,4 +28,8 @@ Cargo.lock
 *.dek
 *.mtga
 data_repository/
+image_repository/
+.DS_Store
+*.pdf
+/*.jpg
 

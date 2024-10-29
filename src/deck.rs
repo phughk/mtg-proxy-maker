@@ -54,7 +54,9 @@ impl DehydratedDeck {
         for (section, dehydrated_cards) in self.cards {
             let mut cards = vec![];
             for dehydrated_card in dehydrated_cards {
-                let hydrated_card = data_repository.get(dehydrated_card).expect("Expected the data repository to have data");
+                let hydrated_card = data_repository
+                    .get(dehydrated_card)
+                    .expect("Expected the data repository to have data");
                 cards.push(hydrated_card);
             }
             hydrated_cards.insert(section, cards);
@@ -75,10 +77,30 @@ impl HydratedDeck {
         for (section, hydrated_cards) in self.cards {
             let mut cards = vec![];
             for card in hydrated_cards {
+                // We need to validate that the picked card is actually one that is available
+                // because input data can be mental (both auto-generated from xmage/cubecobra and
+                // user-modified)
+                let mut valid = false;
+                for candidate in &card.variants {
+                    if card.set_code == candidate.set
+                        && card.collector_number == candidate.collector_number
+                    {
+                        valid = true;
+                        break;
+                    }
+                }
+                let first_variant = card.variants.first().unwrap();
+                let (set, num) = match valid {
+                    true => (card.set_code, card.collector_number),
+                    false => (
+                        first_variant.set.clone(),
+                        first_variant.collector_number.clone(),
+                    ),
+                };
                 cards.push(PickedCard {
                     quantity: card.quantity,
-                    set_code: card.set_code,
-                    collector_number: card.collector_number,
+                    set_code: set,
+                    collector_number: num,
                     name: card.name,
                     double_sided: card.double_sided,
                 })
@@ -111,6 +133,22 @@ pub fn process_input<READ: Read>(read: READ) -> Result<DehydratedDeck, &'static 
 }
 
 fn try_xmage(lines: &[String]) -> Result<DehydratedDeck, ()> {
+    // Space separated
+    // <quantity> [<SET>] <Name>
+    // Set is format
+    // SET:SEQUENCE
+    // Sequence can be either number, or special, if set is PLIST
+    // Compile the regex pattern
+    let re = Regex::new(
+        r"(?x)
+        ^(SB:\s*)?          # Optional 'SB:' prefix with optional space
+        (\d+)               # Quantity at the start of the line
+        \ \[([A-Z0-9]+):([\w-]+)\] # Set code and card number
+        \ (.+)$             # Card name (can contain special characters)
+    ",
+    )
+    .unwrap();
+
     let mut deck = DehydratedDeck {
         cards: BTreeMap::new(),
     };
@@ -118,7 +156,7 @@ fn try_xmage(lines: &[String]) -> Result<DehydratedDeck, ()> {
         if line.trim().is_empty() {
             continue;
         }
-        let card = try_xmage_line(line)
+        let card = try_xmage_line(line, &re)
             .map_err(|e| format!("Failed for line `{}`", line))
             .unwrap();
         match card {
@@ -139,23 +177,7 @@ fn try_xmage(lines: &[String]) -> Result<DehydratedDeck, ()> {
     Ok(deck)
 }
 
-fn try_xmage_line(line: &str) -> Result<XMageCard, ()> {
-    // Space separated
-    // <quantity> [<SET>] <Name>
-    // Set is format
-    // SET:SEQUENCE
-    // Sequence can be either number, or special, if set is PLIST
-    // Compile the regex pattern
-    let re = Regex::new(
-        r"(?x)
-        ^(SB:\s*)?          # Optional 'SB:' prefix with optional space
-        (\d+)               # Quantity at the start of the line
-        \ \[([A-Z0-9]+):([\w-]+)\] # Set code and card number
-        \ (.+)$             # Card name (can contain special characters)
-    ",
-    )
-        .unwrap();
-
+fn try_xmage_line(line: &str, re: &Regex) -> Result<XMageCard, ()> {
     match re.captures(line) {
         None => Err(()),
         Some(c) => {
@@ -196,13 +218,11 @@ fn try_mtga(lines: &[String]) -> Result<DehydratedDeck, ()> {
 
 #[cfg(test)]
 mod test {
-    use crate::deck::{process_input, try_xmage_line, MAINBOARD};
+    use crate::deck::{process_input, MAINBOARD};
     use std::io::Cursor;
 
     #[test]
     pub fn test_xmage() {
-        try_xmage_line("1 [ELD:287] Murderous Rider").unwrap();
-        try_xmage_line("1 [3ED:9] Circle of Protection: Black").unwrap();
         let input = r#"
 1 [MID:163] Tavern Ruffian
 1 [ELD:287] Murderous Rider
