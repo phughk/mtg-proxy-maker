@@ -49,6 +49,20 @@ pub struct DehydratedDeck {
 }
 
 impl DehydratedDeck {
+    pub fn new_for_test(card: &str) -> DehydratedDeck {
+        let mut cards = BTreeMap::new();
+        cards.insert(MAINBOARD.to_string(), vec![DehydratedCard {
+            quantity: 1,
+            set_code: None,
+            collector_number: None,
+            name: card.to_string(),
+            double_sided: None,
+        }]);
+        DehydratedDeck {
+            cards,
+        }
+    }
+
     pub fn as_hydrated(self, data_repository: &DataRepository) -> HydratedDeck {
         let mut hydrated_cards = BTreeMap::new();
         for (section, dehydrated_cards) in self.cards {
@@ -147,7 +161,7 @@ fn try_xmage(lines: &[String]) -> Result<DehydratedDeck, ()> {
         \ (.+)$             # Card name (can contain special characters)
     ",
     )
-    .unwrap();
+        .unwrap();
 
     let mut deck = DehydratedDeck {
         cards: BTreeMap::new(),
@@ -186,13 +200,23 @@ fn try_xmage_line(line: &str, re: &Regex) -> Result<XMageCard, ()> {
             let set_code = &c[3];
             let collector_number = &c[4];
             let name = c[5].to_string();
-            let card = DehydratedCard {
+            let mut card = DehydratedCard {
                 quantity: quantity.parse().unwrap(),
-                set_code: Some(set_code.to_string()),
-                collector_number: Some(collector_number.to_string()),
+                set_code: Some(set_code.to_lowercase()),
+                collector_number: Some(collector_number.to_lowercase()),
                 name,
                 double_sided: None,
             };
+            // Normalise some absolutely mental values from scryfall
+            if let Some(set_code) = &card.set_code {
+                if set_code == "plst" {
+                    let mut eval = collector_number.split("-");
+                    let set_code = eval.next().unwrap().to_lowercase();
+                    let collector_number = eval.next().unwrap().to_lowercase();
+                    card.set_code = Some(set_code);
+                    card.collector_number = Some(collector_number);
+                }
+            }
             match sideboard {
                 true => Ok(XMageCard::Sideboard(card)),
                 false => Ok(XMageCard::Mainboard(card)),
@@ -234,6 +258,9 @@ SB: 1 [AKH:194] Ahn-Crop Champion
         "#;
         let processed = process_input(Cursor::new(input)).unwrap();
         let cards = processed.cards.get(MAINBOARD).unwrap();
+        let b = &cards[5];
+        assert_eq!(b.set_code, Some("m19".to_string()));
+        assert_eq!(b.collector_number, Some("121".to_string()));
         assert_eq!(cards.len(), 6)
     }
 

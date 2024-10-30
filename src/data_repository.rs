@@ -3,6 +3,7 @@ use crate::deck::{DehydratedCard, HydratedCard};
 use crate::scryfall_client::ScryfallClient;
 use serde::{Deserialize, Serialize};
 use sled::{Db, IVec};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 pub struct DataRepository {
@@ -19,6 +20,24 @@ impl DataRepository {
 
     pub fn delete(&self, card: &str) {
         self.db.remove(card.clone()).expect("Failed to remove card");
+    }
+
+    pub fn scan_range(&self, prefix: &str) -> BTreeMap<String, CardInfo> {
+        let mut results = BTreeMap::new();
+        let scan = self.db.scan_prefix(prefix.to_string());
+        for res in scan {
+            match res {
+                Ok((key_ivec, val_ivec)) => {
+                    let key = String::from_utf8_lossy(key_ivec.as_ref()).to_string();
+                    let val: CardInfo = CardInfo::from(val_ivec);
+                    results.insert(key, val);
+                }
+                Err(e) => {
+                    panic!("Scan error: {}", e);
+                }
+            }
+        }
+        results
     }
 
     pub fn get(&self, card: DehydratedCard) -> Result<HydratedCard, ()> {
@@ -50,18 +69,35 @@ impl DataRepository {
                     .map(|card_face| card_face.image_uris.is_some())
                     .reduce(|a, b| a | b)
                     .unwrap_or(false);
+                let variants = vars
+                    .into_iter()
+                    .filter(|var| var.valid())
+                    .map(|var| CardVariant {
+                        set: var.set,
+                        collector_number: var.collector_number,
+                        lang: var.lang,
+                    })
+                    .map(|mut var| {
+                        match var.set == "plist" {
+                            true => {
+                                let mut split_res = var.collector_number.split("-");
+                                let set = split_res.next().unwrap();
+                                let collector_number = split_res.next().unwrap();
+                                assert!(split_res.next().is_none());
+                                var.set = set.to_string();
+                                var.collector_number = collector_number.to_string();
+                                var
+                            }
+                            false => {
+                                var
+                            }
+                        }
+                    })
+                    .collect();
                 let entry = CardInfo {
                     name: first.name,
                     double_sided,
-                    variants: vars
-                        .into_iter()
-                        .filter(|var| var.valid())
-                        .map(|var| CardVariant {
-                            set: var.set,
-                            collector_number: var.collector_number,
-                            lang: var.lang,
-                        })
-                        .collect(),
+                    variants,
                 };
                 self.db
                     .insert(card.name.clone(), entry.clone())
@@ -128,5 +164,28 @@ impl Into<IVec> for CardInfo {
     fn into(self) -> IVec {
         let data = bincode::serialize(&self).expect("IVec of CardInfo can't be serialized");
         IVec::from(data)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::data_repository::DataRepository;
+    use std::path::Path;
+
+    #[test]
+    pub fn test_plist() {
+        let card = "Stitcher's Supplier";
+        let repo = DataRepository::new(Path::new("data_repository")).unwrap();
+        let res = repo.scan_range(&card);
+        for (k, v) in res {
+            println!("Scan result: {}", k);
+            println!("Value: {:?}", v);
+        }
+    }
+
+    #[test]
+    pub fn delete_some_shit() {
+        let repo = DataRepository::new(Path::new("data_repository")).unwrap();
+        repo.delete("Expansion");
     }
 }
