@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 const DEFAULT_BACK_FILENAME: &str = "000_BACK.jpg";
 const DEFAULT_BACK_CONTENTS: &[u8] = include_bytes!("card_back_normal.jpg");
 
+#[derive(Debug, Clone)]
 pub struct ImageRepository<'a> {
     path: &'a Path,
     client: ScryfallClient,

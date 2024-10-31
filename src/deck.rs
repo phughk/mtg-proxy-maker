@@ -13,6 +13,7 @@ pub struct DehydratedCard {
     pub set_code: Option<String>,
     pub collector_number: Option<String>,
     pub name: String,
+    pub flip_name: Option<String>,
     pub double_sided: Option<bool>,
 }
 
@@ -56,6 +57,7 @@ impl DehydratedDeck {
             set_code: None,
             collector_number: None,
             name: card.to_string(),
+            flip_name: None,
             double_sided: None,
         }]);
         DehydratedDeck {
@@ -199,13 +201,25 @@ fn try_xmage_line(line: &str, re: &Regex) -> Result<XMageCard, ()> {
             let quantity = &c[2];
             let set_code = &c[3];
             let collector_number = &c[4];
-            let name = c[5].to_string();
+            let mut name = c[5].trim().to_string();
+            let mut flip_name = None;
+            if name.contains("//") {
+                let split = name.split("//").collect::<Vec<&str>>();
+                assert_eq!(split.len(), 2);
+                flip_name = Some(split[1].trim().to_string());
+                name = split[0].trim().to_string();
+            }
+            let double_sided = match flip_name.is_some() {
+                true => Some(true),
+                false => None,
+            };
             let mut card = DehydratedCard {
                 quantity: quantity.parse().unwrap(),
                 set_code: Some(set_code.to_lowercase()),
                 collector_number: Some(collector_number.to_lowercase()),
                 name,
-                double_sided: None,
+                flip_name,
+                double_sided,
             };
             // Normalise some absolutely mental values from scryfall
             if let Some(set_code) = &card.set_code {
@@ -254,14 +268,17 @@ mod test {
 1 [3ED:9] Circle of Protection: Black
 1 [AKH:194] Ahn-Crop Champion
 1 [PLST:M19-121] Stitcher's Supplier
+1 [GRN:224] Expansion // Explosion
 SB: 1 [AKH:194] Ahn-Crop Champion
         "#;
         let processed = process_input(Cursor::new(input)).unwrap();
         let cards = processed.cards.get(MAINBOARD).unwrap();
+        assert_eq!(cards.len(), 7);
         let b = &cards[5];
         assert_eq!(b.set_code, Some("m19".to_string()));
         assert_eq!(b.collector_number, Some("121".to_string()));
-        assert_eq!(cards.len(), 6)
+        assert_eq!(cards[6].name, "Expansion".to_string());
+        assert_eq!(cards[6].flip_name, Some("Explosion".to_string()));
     }
 
     #[test]

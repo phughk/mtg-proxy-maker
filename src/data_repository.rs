@@ -1,11 +1,12 @@
 use crate::deck;
 use crate::deck::{DehydratedCard, HydratedCard};
-use crate::scryfall_client::ScryfallClient;
+use crate::scryfall_client::{ScryfallClient, ScryfallSearchResultEntryImageUris};
 use serde::{Deserialize, Serialize};
 use sled::{Db, IVec};
 use std::collections::BTreeMap;
 use std::path::Path;
 
+#[derive(Clone)]
 pub struct DataRepository {
     db: Db,
     client: ScryfallClient,
@@ -76,6 +77,7 @@ impl DataRepository {
                         set: var.set,
                         collector_number: var.collector_number,
                         lang: var.lang,
+                        img_url: var.image_uris,
                     })
                     .map(|mut var| {
                         match var.set == "plist" {
@@ -150,6 +152,7 @@ struct CardVariant {
     set: String,
     collector_number: String,
     lang: String,
+    img_url: Option<ScryfallSearchResultEntryImageUris>,
 }
 
 impl From<IVec> for CardInfo {
@@ -170,6 +173,7 @@ impl Into<IVec> for CardInfo {
 #[cfg(test)]
 mod test {
     use crate::data_repository::DataRepository;
+    use crate::deck::DehydratedCard;
     use std::path::Path;
 
     #[test]
@@ -186,6 +190,27 @@ mod test {
     #[test]
     pub fn delete_some_shit() {
         let repo = DataRepository::new(Path::new("data_repository")).unwrap();
+        repo.delete("Michiko's Reign of Truth");
         repo.delete("Expansion");
+        repo.delete("Expansion // Explosion");
+        repo.delete("Kabira Takedown");
+        let hydrated = repo.get(DehydratedCard {
+            quantity: 1,
+            set_code: None,
+            collector_number: None,
+            name: "Kabira Takedown".to_string(),
+            flip_name: None,
+            double_sided: None,
+        }).unwrap();
+        repo.delete("Plateau");
+        let hydrated = repo.get(DehydratedCard {
+            quantity: 1,
+            set_code: None,
+            collector_number: None,
+            name: "Expansion".to_string(),
+            flip_name: None,
+            double_sided: None,
+        }).unwrap();
+        panic!("{:?}", hydrated)
     }
 }

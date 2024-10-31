@@ -101,16 +101,17 @@ fn process_dck_file(file_path: &str, pdf_file_path: &str) -> Result<(), String> 
         .expect("Expected image repository constructor to work");
     let layer = "Layer 1";
     let (doc, front_page, front_layer) = PdfDocument::new("Proxy Deck", PAGE_WIDTH_A4, PAGE_HEIGHT_A4, layer);
-    let mut counter: Option<AtomicU16> = Some(AtomicU16::new(20));
+    let mut counter: Option<AtomicU16> = None;
     let mut index = 0;
     let mut page = 0;
     let (back_page, back_layer) = doc.add_page(PAGE_WIDTH_A4, PAGE_HEIGHT_A4, layer);
     let mut pdf_indexes: ((PdfPageIndex, PdfLayerIndex), (PdfPageIndex, PdfLayerIndex)) = ((front_page, front_layer), (back_page, back_layer));
+    let total = deck.cards.iter().map(|(_board, cards)| cards.len()).reduce(|a, b| a + b).unwrap();
     for (_board, cards) in &deck.cards {
         for card in cards {
-            println!("Rendering card {} [{}:{}] to pdf", card.name, card.set_code, card.collector_number);
+            println!("[{}/{}] Rendering card {} [{}:{}] to pdf", index, total, card.name, card.set_code, card.collector_number);
 
-            let (new_page, x, y) = grid_translator(index);
+            let (new_page, x, y, x_flip) = grid_translator(index);
             if new_page > page {
                 let (front_page, front_layer) = doc.add_page(PAGE_WIDTH_A4, PAGE_HEIGHT_A4, layer);
                 let (back_page, back_layer) = doc.add_page(PAGE_WIDTH_A4, PAGE_HEIGHT_A4, layer);
@@ -146,7 +147,7 @@ fn process_dck_file(file_path: &str, pdf_file_path: &str) -> Result<(), String> 
             back_img.add_to_layer(
                 back_layer_reference,
                 ImageTransform {
-                    translate_x: Some(x),
+                    translate_x: Some(x_flip),
                     translate_y: Some(y),
                     rotate: None,
                     scale_x: None,

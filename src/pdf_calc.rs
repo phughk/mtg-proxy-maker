@@ -10,13 +10,17 @@ pub const PAGE_HEIGHT_A4: Mm = Mm(297.0);
 /// 3 cards wide at
 /// A4 is 210mm x 297mm
 const WIDTH_OFFSET_MM: Mm = Mm((PAGE_WIDTH_A4.0 - (3f32 * CARD_WIDTH.0)) / 2.0);
-const HEIGHT_OFFSET_MM: Mm = Mm((CARD_HEIGHT.0 - (3f32 * CARD_HEIGHT.0)) / 2.0);
+const HEIGHT_OFFSET_MM: Mm = Mm((PAGE_HEIGHT_A4.0 - (3f32 * CARD_HEIGHT.0)) / 2.0);
 
-pub fn grid_translator(index: usize) -> (usize, Mm, Mm) {
+/// Given a card index, return it's position in a pdf
+/// (page_number from 0, x position, y position, x position on other side)
+pub fn grid_translator(index: usize) -> (usize, Mm, Mm, Mm) {
     let page = index / 9;
     let pos_index = index % 9;
     let grid_x = pos_index % 3;
+    let grid_x_flip = 2 - grid_x;
     let grid_x = grid_x as f32;
+    let grid_x_flip = grid_x_flip as f32;
     let grid_y = pos_index / 3;
     // Offsets are calculated from left bottom so we need to invert top (0,1 2) becomes (2,1,0)
     let grid_y = 2 - grid_y;
@@ -25,7 +29,9 @@ pub fn grid_translator(index: usize) -> (usize, Mm, Mm) {
     let x = Mm(WIDTH_OFFSET_MM.0 + x.0);
     let y = Mm(CARD_HEIGHT.0 * grid_y);
     let y = Mm(HEIGHT_OFFSET_MM.0 + y.0);
-    (page, x, y)
+    let x_flip = Mm(CARD_WIDTH.0 * grid_x_flip);
+    let x_flip = Mm(WIDTH_OFFSET_MM.0 + x_flip.0);
+    (page, x, y, x_flip)
 }
 
 pub fn calculate_dpi_image(img: &Image) -> f32 {
@@ -42,8 +48,12 @@ pub fn calculate_dpi(width: usize, height: usize) -> f32 {
     let dpi_width = width as f32 / width_in_inches;
     let dpi_height = height as f32 / height_in_inches;
 
-    // Return the average DPI as u16
-    (dpi_width + dpi_height) / 2.0
+    // Return the min DPI
+    if dpi_width < dpi_height {
+        dpi_width
+    } else {
+        dpi_height
+    }
 }
 
 #[cfg(test)]
@@ -86,12 +96,13 @@ mod test {
     pub fn test_grid_translator() {
         let mut results = Vec::new();
         for index in 0..10 {
-            let (page, x, y) = grid_translator(index);
+            let (page, x, y, x_flip) = grid_translator(index);
             results.push(GridTranslateTestCase {
                 index,
                 page,
                 x_offset: x.0,
                 y_offset: y.0,
+                x_flip_offset: x_flip.0,
             });
         }
         assert_eq!(results, &[
@@ -100,66 +111,77 @@ mod test {
                 page: 0,
                 x_offset: 10.5,
                 y_offset: 88.0,
+                x_flip_offset: 0.0,
             },
             GridTranslateTestCase {
                 index: 1,
                 page: 0,
                 x_offset: 0.0,
                 y_offset: 0.0,
+                x_flip_offset: 0.0,
             },
             GridTranslateTestCase {
                 index: 2,
                 page: 0,
                 x_offset: 0.0,
                 y_offset: 0.0,
+                x_flip_offset: 0.0,
             },
             GridTranslateTestCase {
                 index: 3,
                 page: 0,
                 x_offset: 0.0,
                 y_offset: 0.0,
+                x_flip_offset: 0.0,
             },
             GridTranslateTestCase {
                 index: 4,
                 page: 0,
                 x_offset: 0.0,
                 y_offset: 0.0,
+                x_flip_offset: 0.0,
             },
             GridTranslateTestCase {
                 index: 5,
                 page: 0,
                 x_offset: 0.0,
                 y_offset: 0.0,
+                x_flip_offset: 0.0,
             },
             GridTranslateTestCase {
                 index: 6,
                 page: 0,
                 x_offset: 0.0,
                 y_offset: 0.0,
+                x_flip_offset: 0.0,
             },
             GridTranslateTestCase {
                 index: 7,
                 page: 0,
                 x_offset: 0.0,
                 y_offset: 0.0,
+                x_flip_offset: 0.0,
             },
             GridTranslateTestCase {
                 index: 8,
                 page: 0,
                 x_offset: 0.0,
                 y_offset: 0.0,
+                x_flip_offset: 0.0,
             },
             GridTranslateTestCase {
                 index: 9,
                 page: 0,
                 x_offset: 0.0,
                 y_offset: 0.0,
+                x_flip_offset: 0.0,
             },
             GridTranslateTestCase {
                 index: 10,
                 page: 1,
                 x_offset: 199.5,
                 y_offset: 176.0,
+                x_flip_offset: 0.0,
             },
         ]);
     }
@@ -170,6 +192,7 @@ mod test {
         page: usize,
         x_offset: f32,
         y_offset: f32,
+        x_flip_offset: f32,
     }
 
     impl PartialEq for GridTranslateTestCase {
