@@ -3,8 +3,6 @@ use reqwest::header::{ACCEPT, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::Read;
-use std::thread::sleep;
-use std::time::Duration;
 
 const PROXY_MAKER_AGENT: &str = "MyMTGApp/1.0";
 const BASE_URL: &str = "https://api.scryfall.com";
@@ -32,7 +30,7 @@ impl ScryfallClient {
         );
         println!("url: {}", url);
         // Scryfall requests that we are polite
-        sleep(Duration::from_millis(100));
+        // sleep(Duration::from_millis(100));
         let resp = self
             .client
             .get(&url)
