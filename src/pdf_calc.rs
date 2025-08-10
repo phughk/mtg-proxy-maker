@@ -9,8 +9,8 @@ pub const PAGE_HEIGHT_A4: Mm = Mm(297.0);
 ///
 /// 3 cards wide at
 /// A4 is 210mm x 297mm
-const WIDTH_OFFSET_MM: Mm = Mm((PAGE_WIDTH_A4.0 - (3f32 * CARD_WIDTH.0)) / 2.0);
-const HEIGHT_OFFSET_MM: Mm = Mm((PAGE_HEIGHT_A4.0 - (3f32 * CARD_HEIGHT.0)) / 2.0);
+pub const WIDTH_OFFSET_MM: Mm = Mm((PAGE_WIDTH_A4.0 - (3f32 * CARD_WIDTH.0)) / 2.0);
+pub const HEIGHT_OFFSET_MM: Mm = Mm((PAGE_HEIGHT_A4.0 - (3f32 * CARD_HEIGHT.0)) / 2.0);
 
 /// Given a card index, return it's position in a pdf
 /// (page_number from 0, x position, y position, x position on other side)

@@ -1,17 +1,20 @@
 mod data_repository;
 pub mod deck;
 mod image_repository;
-mod scryfall_client;
 mod pdf_calc;
+mod scryfall_client;
 
 use crate::data_repository::DataRepository;
 use crate::image_repository::ImageRepository;
-use crate::pdf_calc::{calculate_dpi_image, grid_translator, PAGE_HEIGHT_A4, PAGE_WIDTH_A4};
+use crate::pdf_calc::{
+    calculate_dpi_image, grid_translator, CARD_HEIGHT, CARD_WIDTH, HEIGHT_OFFSET_MM,
+    PAGE_HEIGHT_A4, PAGE_WIDTH_A4, WIDTH_OFFSET_MM,
+};
 use clap::Parser;
-use printpdf::{Image, ImageTransform, PdfDocument, PdfLayerIndex, PdfPageIndex};
-use std::fmt::{Debug, Display};
+use printpdf::{Image, ImageTransform, Mm, PdfDocument, PdfLayerIndex, PdfPageIndex, Point};
+use std::fmt::Debug;
 use std::fs::File;
-use std::io::{BufRead, BufWriter};
+use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU16, Ordering};
 
@@ -27,7 +30,7 @@ struct Args {
     card_count: Option<u16>,
 
     /// Path to the image repository
-    #[arg(short = 'i', long, default_value = "./data_repository")]
+    #[arg(short = 'r', long, default_value = "./data_repository")]
     image_repository: Option<String>,
 
     /// Path to the data repository
@@ -39,7 +42,11 @@ struct Args {
     output_pdf_name: Option<String>,
 }
 
-fn process_dck_file(file_path: &Path, pdf_file_path: &Path, counter: Option<AtomicU16>) -> Result<(), String> {
+fn process_dck_file(
+    file_path: &Path,
+    pdf_file_path: &Path,
+    counter: Option<AtomicU16>,
+) -> Result<(), String> {
     let file = File::open(file_path)
         .map_err(|e| format!("Could not open data file: {}", e.to_string()))?;
     let deck = crate::deck::process_input(file).unwrap();
@@ -49,32 +56,122 @@ fn process_dck_file(file_path: &Path, pdf_file_path: &Path, counter: Option<Atom
     let image_repo = ImageRepository::new(Path::new("image_repository"), None)
         .expect("Expected image repository constructor to work");
     let layer = "Layer 1";
-    let (doc, front_page, front_layer) = PdfDocument::new("Proxy Deck", PAGE_WIDTH_A4, PAGE_HEIGHT_A4, layer);
+    let (doc, front_page, front_layer) =
+        PdfDocument::new("Proxy Deck", PAGE_WIDTH_A4, PAGE_HEIGHT_A4, layer);
     let mut index = 0;
     let mut page = 0;
     let (back_page, back_layer) = doc.add_page(PAGE_WIDTH_A4, PAGE_HEIGHT_A4, layer);
-    let mut pdf_indexes: ((PdfPageIndex, PdfLayerIndex), (PdfPageIndex, PdfLayerIndex)) = ((front_page, front_layer), (back_page, back_layer));
-    let total = deck.cards.iter().map(|(_board, cards)| cards.into_iter().map(|c| c.quantity).reduce(|a, b| a + b).unwrap()).reduce(|a, b| a + b).unwrap();
+    let mut pdf_indexes: ((PdfPageIndex, PdfLayerIndex), (PdfPageIndex, PdfLayerIndex)) =
+        ((front_page, front_layer), (back_page, back_layer));
+    let total = deck
+        .cards
+        .iter()
+        .map(|(_board, cards)| {
+            cards
+                .into_iter()
+                .map(|c| c.quantity)
+                .reduce(|a, b| a + b)
+                .unwrap()
+        })
+        .reduce(|a, b| a + b)
+        .unwrap();
     for (_board, cards) in &deck.cards {
         for card in cards {
             for _ in 0..card.quantity {
-                println!("[{}/{}] Rendering card {} [{}:{}] to pdf", index, total, card.name, card.set_code, card.collector_number);
+                println!(
+                    "[{}/{}] Rendering card {} [{}:{}] to pdf",
+                    index, total, card.name, card.set_code, card.collector_number
+                );
 
                 let (new_page, x, y, x_flip) = grid_translator(index);
+                let mut draw_grid = false;
                 if new_page > page {
-                    let (front_page, front_layer) = doc.add_page(PAGE_WIDTH_A4, PAGE_HEIGHT_A4, layer);
-                    let (back_page, back_layer) = doc.add_page(PAGE_WIDTH_A4, PAGE_HEIGHT_A4, layer);
+                    let (front_page, front_layer) =
+                        doc.add_page(PAGE_WIDTH_A4, PAGE_HEIGHT_A4, layer);
+                    let (back_page, back_layer) =
+                        doc.add_page(PAGE_WIDTH_A4, PAGE_HEIGHT_A4, layer);
                     pdf_indexes = ((front_page, front_layer), (back_page, back_layer));
                     page = new_page;
+                    draw_grid = true;
                 }
 
-                let front_layer_reference = doc.get_page(pdf_indexes.0.0).get_layer(pdf_indexes.0.1);
+                let front_layer_reference =
+                    doc.get_page(pdf_indexes.0 .0).get_layer(pdf_indexes.0 .1);
+                let back_layer_reference =
+                    doc.get_page(pdf_indexes.1 .0).get_layer(pdf_indexes.1 .1);
+
+                if (index == 0) || draw_grid {
+                    // Draw 4 (2x2) black lines
+                    let lines = [
+                        printpdf::Line {
+                            points: vec![
+                                (Point::new(WIDTH_OFFSET_MM + CARD_WIDTH, Mm(0.0)), false),
+                                (
+                                    Point::new(WIDTH_OFFSET_MM + CARD_WIDTH, PAGE_HEIGHT_A4),
+                                    false,
+                                ),
+                            ],
+                            is_closed: false,
+                        },
+                        printpdf::Line {
+                            points: vec![
+                                (
+                                    Point::new(WIDTH_OFFSET_MM + CARD_WIDTH + CARD_WIDTH, Mm(0.0)),
+                                    false,
+                                ),
+                                (
+                                    Point::new(
+                                        WIDTH_OFFSET_MM + CARD_WIDTH + CARD_WIDTH,
+                                        PAGE_HEIGHT_A4,
+                                    ),
+                                    false,
+                                ),
+                            ],
+                            is_closed: false,
+                        },
+                        printpdf::Line {
+                            points: vec![
+                                (Point::new(Mm(0.0), HEIGHT_OFFSET_MM + CARD_HEIGHT), false),
+                                (
+                                    Point::new(PAGE_WIDTH_A4, HEIGHT_OFFSET_MM + CARD_HEIGHT),
+                                    false,
+                                ),
+                            ],
+                            is_closed: false,
+                        },
+                        printpdf::Line {
+                            points: vec![
+                                (
+                                    Point::new(
+                                        Mm(0.0),
+                                        HEIGHT_OFFSET_MM + CARD_HEIGHT + CARD_HEIGHT,
+                                    ),
+                                    false,
+                                ),
+                                (
+                                    Point::new(
+                                        PAGE_WIDTH_A4,
+                                        HEIGHT_OFFSET_MM + CARD_HEIGHT + CARD_HEIGHT,
+                                    ),
+                                    false,
+                                ),
+                            ],
+                            is_closed: false,
+                        },
+                    ];
+                    for line in lines.clone() {
+                        front_layer_reference.add_line(line)
+                    }
+                    for line in lines {
+                        back_layer_reference.add_line(line);
+                    }
+                }
+
                 let (mut front, mut back) = image_repo.get_image(card).unwrap();
                 let front_decoder =
                     printpdf::image_crate::codecs::jpeg::JpegDecoder::new(&mut front).unwrap();
                 let front_img = Image::try_from(front_decoder).unwrap();
 
-                let back_layer_reference = doc.get_page(pdf_indexes.1.0).get_layer(pdf_indexes.1.1);
                 let back_decoder =
                     printpdf::image_crate::codecs::jpeg::JpegDecoder::new(&mut back).unwrap();
                 let back_img = Image::try_from(back_decoder).unwrap();
@@ -127,7 +224,7 @@ fn main() {
     let file_path = Path::new(&args.input_file);
     let output = match &args.output_pdf_name {
         None => file_path.with_extension("pdf"),
-        Some(f) => PathBuf::from(Path::new(f))
+        Some(f) => PathBuf::from(Path::new(f)),
     };
     let counter = args.card_count.map(|c| AtomicU16::new(c));
     if let Err(e) = process_dck_file(file_path, &output, counter) {
